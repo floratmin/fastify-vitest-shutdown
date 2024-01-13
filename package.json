@@ -1,0 +1,33 @@
+{
+  "name": "fastify-effection-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch ./src/main.ts",
+    "build": "tsc && vite build",
+    "run": "NODE_ENV=production node dist/main.js",
+    "startdb": "docker-compose up",
+    "test": "vitest",
+    "bench:server": "LOGGER=false tsx ./src/main.ts",
+    "bench:start": "ab -r -n 100000 -c 500 http://127.0.0.1:3000/benchmark/no/no;sleep 1;ab -r -n 100000 -c 500 http://127.0.0.1:3000/benchmark/sc/no;sleep 1;ab -r -n 100000 -c 500 http://127.0.0.1:3000/benchmark/no/db;sleep 1;ab -r -n 100000 -c 500 http://127.0.0.1:3000/benchmark/sc/db;"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.8",
+    "@types/pg": "^8.10.9",
+    "json-schema-to-ts": "^3.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.11",
+    "vite-plugin-node": "^3.1.0",
+    "vitest": "^1.2.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "effection": "^3.0.1",
+    "fastify": "^4.25.2",
+    "fastify-plugin": "^4.5.1",
+    "kysely": "^0.27.2",
+    "pg": "^8.11.3"
+  }
+}
