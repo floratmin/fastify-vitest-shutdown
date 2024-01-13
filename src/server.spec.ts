@@ -149,7 +149,7 @@ export function setupPoolMock (queryResults: Record<string, {rows: Record<string
     }
 }
 
-describe('createPool', () => {
+describe('createPol', () => {
     let logger: LoggerMock;
     beforeEach(() => {
         logger = <LoggerMock>new (createLoggerMock())();

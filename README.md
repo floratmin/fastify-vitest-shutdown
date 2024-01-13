@@ -1,3 +1,12 @@
+# Problem wit Vitest shutdown
+
+- Start tests `pnpm run test`
+- Make some changes in tests, see tests reload
+- Make some more changes in tests, see tests reload
+  (The tests also do not finish immediately)
+- Try to stop tests with Ctrl+c, it does not work
+- (kill process with kill -9 pid)
+
 # Fastify with Effection, Typescript, Vitest and Kysely
 
 ### Run dev server
