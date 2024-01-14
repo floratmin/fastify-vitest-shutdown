@@ -9,6 +9,9 @@
     "run": "NODE_ENV=production node dist/main.js",
     "startdb": "docker-compose up",
     "test": "vitest",
+    "test:only": "vitest only",
+    "test:server": "vitest server",
+    "test:native": "vitest native",
     "bench:server": "LOGGER=false tsx ./src/main.ts",
     "bench:start": "ab -r -n 100000 -c 500 http://127.0.0.1:3000/benchmark/no/no;sleep 1;ab -r -n 100000 -c 500 http://127.0.0.1:3000/benchmark/sc/no;sleep 1;ab -r -n 100000 -c 500 http://127.0.0.1:3000/benchmark/no/db;sleep 1;ab -r -n 100000 -c 500 http://127.0.0.1:3000/benchmark/sc/db;"
   },

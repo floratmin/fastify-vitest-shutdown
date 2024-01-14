@@ -27,9 +27,9 @@ export function* buildFastify(pgPool: typeof Pool, kysely: typeof Kysely, postgr
     const scope = yield* useScope();
 
     // instantiate server
-    const fastify= Fastify({
+    const fastify= yield* call(() => Fastify({
         logger: logger ?? (process.env.LOGGER ? process.env.LOGGER === 'true' : true),
-    });
+    }));
 
     // create pool
     const pool = yield* createPool(
@@ -140,3 +140,26 @@ export const fastifyPluginScope = (scope: Scope) => fp(
     }, {
         name: 'effection-scope-plugin',
     });
+
+// Start Fastify server
+export function startServer(port: number, fastify: FastifyInstance, devServer: boolean): Operation<undefined> {
+    return resource(function* (provide) {
+        yield* call(fastify.listen({port}));
+        try {
+            yield* provide(undefined);
+        } finally {
+            yield* action(function* (resolve, reject) {
+                try {
+                    fastify.close(() => {
+                        fastify.log.info('Shutting down server...');
+                        resolve();
+                    });
+                    devServer && resolve();
+                } catch (err: unknown) {
+                    const error = err instanceof Error ? err : new Error(`An exception occurred when shutting down the server. ${err}`);
+                    reject(error);
+                }
+            });
+        }
+    });
+}

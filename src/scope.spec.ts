@@ -5,7 +5,7 @@ import {createContext, Scope} from 'effection';
 
 const context = createContext<string>('some-string');
 
-describe('scenario', () => {
+describe('scenario [scope]', () => {
     beforeEach(function* (scope: Scope) {
         scope.set(context, 'Hello World');
     });

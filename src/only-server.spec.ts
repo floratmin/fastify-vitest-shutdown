@@ -1,12 +1,10 @@
-import {expect, vi, describe, it, beforeEach, afterEach} from 'vitest';
-import {Pool} from 'pg';
-import {run, createScope, Scope} from 'effection';
-import Fastify, {FastifyBaseLogger, FastifyInstance} from 'fastify';
-import {buildFastify, compiledQueryFactory, createPool, decorateFastifyDatabaseFunctions, fastifyPluginScope, Scopes} from './server.ts';
-import {PoolConfig} from 'pg';
+import {beforeEach, describe, expect, it, vi} from 'vitest';
+import {Pool, PoolConfig} from 'pg';
+import {createScope, run, Scope} from 'effection';
+import {FastifyBaseLogger, FastifyInstance} from 'fastify';
+import {buildFastify, compiledQueryFactory, createPool, decorateFastifyDatabaseFunctions, fastifyPluginScope, Scopes, startServer} from './server.ts';
 import {PoolService} from './interfaces.ts';
 import {CompiledQuery, Kysely, PostgresDialect} from 'kysely';
-import {startServer} from './main.ts';
 
 vi.mock('pg', () => {
     const Pool = vi.fn();
@@ -14,6 +12,49 @@ vi.mock('pg', () => {
     Pool.end = vi.fn();
     return {Pool};
 });
+
+export function createFastifyMock(logs: Partial<Logs> = {}, devServer = false) {
+
+    return class fastify {
+        public log: LoggerMock = new (createLoggerMock(logs))();
+        private hooks: Record<string, any[]> = {}
+
+        decorate (pluginName: string, plugin: any){
+            if (!(pluginName in this)) {
+                // @ts-ignore
+                this[pluginName] = plugin;
+            }
+        }
+
+        async listen(opts: { port: number }) {
+            this.log.info(`Listening on port ${opts.port}`);
+        }
+
+        addHook(hook: string, func: any) {
+            if (this.hooks[hook]) {
+                this.hooks[hook]!.push(func);
+            } else {
+                this.hooks[hook] = [func];
+            }
+        }
+
+        register(func: any) {
+            func(this, undefined, () => {});
+        }
+
+        async close(func?: () => void) {
+            if (devServer) {
+                await new Promise((resolve) => setTimeout(() => resolve(undefined), 1));
+            }
+            if (func) func();
+            if (this.hooks.onClose) {
+                this.hooks.onClose.forEach((func) => {
+                    func(this, () => {});
+                });
+            }
+        }
+    }
+}
 
 export type Logs = {
     info: string[];
@@ -149,7 +190,7 @@ export function setupPoolMock (queryResults: Record<string, {rows: Record<string
     }
 }
 
-describe('createPol', () => {
+describe('createPool', () => {
     let logger: LoggerMock;
     beforeEach(() => {
         logger = <LoggerMock>new (createLoggerMock())();
@@ -187,42 +228,35 @@ describe('createPol', () => {
 });
 
 describe('startServer', () => {
-    let fastify: FastifyInstance;
-    let logger: LoggerMock;
+    let logger: Partial<Logs>;
     beforeEach(() => {
-        logger = <LoggerMock>new (createLoggerMock())();
-        fastify = <FastifyInstance><unknown>{
-            log: logger,
-            listen: (opts: {port: number}) => logger.info(`Server listening at port ${opts.port}`),
-            close: async (func: Function) => {
-                await new Promise((resolve) => {
-                    setTimeout(() => resolve(undefined), 0);
-                });
-                return func();
-            },
+        logger = {
+            info: [],
         };
     });
     it('Should start a server', async () => {
+        const fastify = <FastifyInstance><unknown>new (createFastifyMock(logger))();
         await run(function* () {
             yield* startServer(3000, fastify, false);
-            expect(logger.logs.info).toEqual([
-                'Server listening at port 3000',
+            expect(logger.info).toEqual([
+                'Listening on port 3000',
             ]);
         });
-        expect(logger.logs.info).toEqual([
-            'Server listening at port 3000',
+        expect(logger.info).toEqual([
+            'Listening on port 3000',
             'Shutting down server...'
         ]);
     });
     it('Should start a dev server, which does not wait for closeListener', async() => {
+        const fastify = <FastifyInstance><unknown>new (createFastifyMock(logger, true))();
         await run(function* () {
             yield* startServer(3000, fastify, true);
-            expect(logger.logs.info).toEqual([
-                'Server listening at port 3000',
+            expect(logger.info).toEqual([
+                'Listening on port 3000',
             ]);
         });
-        expect(logger.logs.info).toEqual([
-            'Server listening at port 3000',
+        expect(logger.info).toEqual([
+            'Listening on port 3000',
         ]);
     });
 });
@@ -260,22 +294,18 @@ describe('decorateFastifyDatabaseFunctions', () => {
         }
         const PoolMock = setupPoolMock({'SELECT': {rows: [{result: 'queryResult'}]}});
         const pool = new PoolMock();
-        const fastify = <FastifyInstance>{
-            decorate: (pluginName: string, plugin: any) => {
-                spy.plugins[pluginName] = plugin;
-            },
-        };
+        const fastify = <FastifyInstance><unknown>new (createFastifyMock())();
 
         decorateFastifyDatabaseFunctions(<Pool><unknown>pool, fastify, <typeof Kysely><unknown>KyselyMock, <typeof PostgresDialect><unknown>PostgresDialectMock);
         expect(pool.called).toEqual(1);
         expect(spy.dialect).toEqual(new PostgresDialectMock({pool: <PoolService><unknown>pool}));
         expect(pool.sql).toEqual([]);
         expect(pool.parameters).toEqual([]);
-        expect(spy.plugins.pool).toEqual(pool);
+        expect(fastify.pool).toEqual(pool);
         expect(spy.pool).toEqual(pool);
-        expect(spy.plugins.db).toEqual(new KyselyMock({dialect: new PostgresDialectMock({pool: <PoolService><unknown>pool})}));
-        expect(spy.plugins.getQueryResults.toString()).toBe(compiledQueryFactory(<PoolService><unknown>pool).toString());
-        const result = await(run(() => spy.plugins.getQueryResults(<CompiledQuery><unknown>{sql: 'SELECT', parameters: [0]})));
+        expect(fastify.db).toEqual(new KyselyMock({dialect: new PostgresDialectMock({pool: <PoolService><unknown>pool})}));
+        expect(fastify.getQueryResults.toString()).toBe(compiledQueryFactory(<PoolService><unknown>pool).toString());
+        const result = await(run(() => fastify.getQueryResults(<CompiledQuery><unknown>{sql: 'SELECT', parameters: [0]})));
         expect(result).toEqual({rows: [{result: 'queryResult'}]});
         expect(pool.sql).toEqual(['SELECT']);
         expect(pool.parameters).toEqual([[0]]);
@@ -283,7 +313,8 @@ describe('decorateFastifyDatabaseFunctions', () => {
 });
 
 describe('Scopes', () => {
-    const fastify = Fastify();
+    const fastifyMock = createFastifyMock();
+    const fastify = <FastifyInstance><unknown>(new fastifyMock());
     it('should create scopes', () => {
         const [scope] = createScope();
         const scopes = new Scopes(fastify);
@@ -310,7 +341,7 @@ describe('fastifyPluginScope', () => {
         const logger: Partial<Logs> = {
             info: [],
         }
-        const fastify = Fastify({logger: <FastifyBaseLogger><unknown>new (createLoggerMock(logger))()});
+        const fastify = <FastifyInstance><unknown>new (createFastifyMock(logger))();
 
         class ScopeMock {}
 
@@ -360,30 +391,36 @@ describe('buildFastify', () => {
     });
 });
 
-describe('Test native server', () => {
-   function buildFastify () {
-     const fastify = Fastify()
-
-     fastify.get('/', function (_, reply) {
-       reply.send({ hello: 'world' })
-     })
-
-     return fastify
-   }
-   let fastify: FastifyInstance;
-   beforeEach(() => {
-       fastify = buildFastify();
-   })
-   it('should work', async () => {
-    fastify.inject({
-        method: 'GET',
-        url: '/',
-    }, (_, response) => {
-        expect(response.statusCode).toBe(200);
-    });
-    await new Promise((resolve) => setTimeout(() => resolve(undefined), 1));
-   });
-   afterEach(() => {
-       fastify.close();
-   });
-});
+// describe('startServer', () => {
+//     it('starts the server', async () => {
+//         const logs: Partial<Logs> = {
+//             info: [],
+//         }
+//         const fastify = new (createFastifyMock(logs))();
+//         await run(function* () {
+//             yield* startServer(3000, <FastifyInstance><unknown>fastify, false);
+//             expect(logs.info).toEqual([
+//                 'Listening on port 3000',
+//             ]);
+//         });
+//         expect(logs.info).toEqual([
+//             'Listening on port 3000',
+//             'Shutting down server...',
+//         ]);
+//     });
+//     it('starts the devServer', async () => {
+//         const logs: Partial<Logs> = {
+//             info: [],
+//         }
+//         const fastify = new (createFastifyMock(logs, true))();
+//         await run(function* () {
+//             yield* startServer(3000, <FastifyInstance><unknown>fastify, true);
+//             expect(logs.info).toEqual([
+//                 'Listening on port 3000',
+//             ]);
+//         });
+//         expect(logs.info).toEqual([
+//             'Listening on port 3000',
+//         ]);
+//     });
+// });
