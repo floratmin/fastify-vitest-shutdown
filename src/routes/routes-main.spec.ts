@@ -40,7 +40,7 @@ describe('main routes', () => {
                     method: 'GET',
                     url: '/',
                 }, (_, response) => {
-                    expect(response.statusCode).toBe(200);
+                    expect(response.statusCode).toBe(20);
                     expect(response.body).toEqual(JSON.stringify({hello: 'world'}));
                 });
                 yield* sleep(1);

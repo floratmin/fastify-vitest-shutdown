@@ -6,12 +6,9 @@ import {DB} from './db.ts';
 import {PoolService} from './interfaces.ts';
 import {routesBenchmark} from './routes/routes-benchmark.ts';
 import {handledScope, routesScope} from './routes/routes-scope.ts';
-import env from 'dotenv';
 import {schemas} from './schemas.ts';
 import {mainRoutes} from './routes/routes-main.ts';
-import fp from 'fastify-plugin';
 
-env.config();
 
 
 declare module 'fastify' {
@@ -35,18 +32,18 @@ export function* buildFastify(pgPool: typeof Pool, kysely: typeof Kysely, postgr
     const pool = yield* createPool(
         pgPool,
         {
-            host: process.env.DATABASE_HOST,
-            port: parseInt(process.env.DATABASE_PORT ?? '5432'),
-            database: process.env.DATABASE_NAME,
-            user: process.env.DATABASE_USER,
-            password: process.env.DATABASE_PASSWORD,
+            host: '0.0.0.0',
+            port: 5433,
+            database: 'fastify',
+            user: 'app',
+            password: 'password',
         },
         fastify.log,
     );
 
     decorateFastifyDatabaseFunctions(pool, fastify, kysely, postgresDialect);
     // decorateScope(scope, fastify);
-    fastify.register(fastifyPluginScope(scope));
+    fastifyPluginScope(scope)(fastify);
 
     fastify.addSchema(schemas);
 
@@ -126,8 +123,8 @@ export class Scopes {
 
 }
 
-export const fastifyPluginScope = (scope: Scope) => fp(
-    function(fastify, _, done) {
+export const fastifyPluginScope = (scope: Scope) =>
+    function(fastify: FastifyInstance) {
         let scopes: Scopes | undefined = new Scopes(fastify);
         scopes.addScope('main', scope);
         fastify.decorate('scopes', scopes);
@@ -136,10 +133,7 @@ export const fastifyPluginScope = (scope: Scope) => fp(
             instance.log.info('Scopes released.');
             done();
         });
-        done();
-    }, {
-        name: 'effection-scope-plugin',
-    });
+    };
 
 // Start Fastify server
 export function startServer(port: number, fastify: FastifyInstance, devServer: boolean): Operation<undefined> {
