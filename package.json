@@ -21,13 +21,12 @@
     "json-schema-to-ts": "^3.0.0",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3",
-    "vite": "^5.0.11",
+    "vite": "5.0.12",
     "vite-plugin-node": "^3.1.0",
     "vitest": "^1.2.0"
   },
   "dependencies": {
-    "dotenv": "^16.3.1",
-    "effection": "^3.0.1",
+    "effection": "3.0.2",
     "fastify": "^4.25.2",
     "fastify-plugin": "^4.5.1",
     "kysely": "^0.27.2",

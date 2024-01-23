@@ -1,35 +1,28 @@
 import Fastify, {FastifyBaseLogger, FastifyInstance} from 'fastify';
 import {Pool, PoolConfig} from 'pg';
-import {action, call, Operation, resource, Scope, useScope} from 'effection';
-import {Compilable, CompiledQuery, InferResult, Kysely, PostgresDialect, PostgresPool} from 'kysely';
-import {DB} from './db.ts';
+import {action, call, Operation, resource} from 'effection';
+import {Kysely} from 'kysely';
 import {PoolService} from './interfaces.ts';
 import {routesBenchmark} from './routes/routes-benchmark.ts';
-import {handledScope, routesScope} from './routes/routes-scope.ts';
+import {routesScope} from './routes/routes-scope.ts';
 import {schemas} from './schemas.ts';
 import {mainRoutes} from './routes/routes-main.ts';
 
-
-
 declare module 'fastify' {
     export interface FastifyInstance {
-        pool: PoolService;
-        db: Kysely<DB>;
-        getQueryResults: QueryDatabase;
-        scopes: Scopes;
+        pool: number;
     }
 }
-export function* buildFastify(pgPool: typeof Pool, kysely: typeof Kysely, postgresDialect: typeof PostgresDialect, logger?: FastifyBaseLogger): Operation<{fastify: FastifyInstance, port: number}> {
+export function* buildFastify(pgPool: typeof Pool, kysely: typeof Kysely, logger?: FastifyBaseLogger): Operation<{fastify: FastifyInstance, port: number}> {
 
-    const scope = yield* useScope();
 
     // instantiate server
-    const fastify= yield* call(() => Fastify({
+    const fastify = yield* call(() => Fastify({
         logger: logger ?? (process.env.LOGGER ? process.env.LOGGER === 'true' : true),
     }));
 
     // create pool
-    const pool = yield* createPool(
+    yield* createPool(
         pgPool,
         {
             host: '0.0.0.0',
@@ -41,16 +34,13 @@ export function* buildFastify(pgPool: typeof Pool, kysely: typeof Kysely, postgr
         fastify.log,
     );
 
-    decorateFastifyDatabaseFunctions(pool, fastify, kysely, postgresDialect);
-    // decorateScope(scope, fastify);
-    fastifyPluginScope(scope)(fastify);
+    fastify.decorate('pool', 1);
 
     fastify.addSchema(schemas);
 
     // register routes
     yield* call(() => fastify.register(routesBenchmark));
     yield* call(() => fastify.register(routesScope));
-    yield* call(() => fastify.register(handledScope));
     yield* call(() => fastify.register(mainRoutes));
 
     const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
@@ -68,72 +58,11 @@ export function createPool(poolClass: typeof Pool, config: PoolConfig, logger: F
             yield* provide(pool);
         } finally {
             logger.info('Closing database pool...');
-            yield* call(pool.end());
+            yield* call(() => pool.end());
             logger.info('Database pool closed.');
         }
     });
 }
-
-type QueryDatabase = <T extends Compilable<any> | CompiledQuery<any>>(compiledQuery: CompiledQuery<T>) => Operation<{rows: InferResult<T>}>;
-
-export function compiledQueryFactory(pool: PoolService): QueryDatabase {
-    return <T extends Compilable<any> | CompiledQuery<any>>(compiledQuery: CompiledQuery<T>) => {
-        return action(function* compiledQueryAction(resolve, reject) {
-            pool.query(compiledQuery.sql, <any []>compiledQuery.parameters, function compiledQueryResults(err, result) {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(result);
-                }
-            });
-        });
-    }
-}
-
-export function decorateFastifyDatabaseFunctions(pool: PoolService, fastify: FastifyInstance, kysely: typeof Kysely, postgresDialect: typeof PostgresDialect): void {
-    fastify.decorate('pool', pool);
-    const db = new kysely<DB>({dialect: new postgresDialect({pool: <PostgresPool>pool})});
-    fastify.decorate('db', db);
-    const getQueryResults = compiledQueryFactory(pool);
-    fastify.decorate('getQueryResults', getQueryResults);
-}
-
-export class Scopes {
-    #scopes: Record<string, Scope> = {};
-
-    constructor(private fastify: FastifyInstance) {}
-
-    addScope(key: string, scope: Scope) {
-        if (this.#scopes[key]) {
-            this.fastify.log.error(`Scope of key '${key}' already defined.`);
-            throw new Error(`Scope of key '${key}' already defined.`);
-        }
-        this.#scopes[key] = scope;
-    }
-
-    getScope(key: string): Scope {
-        const scope = this.#scopes[key];
-        if (scope === undefined) {
-            this.fastify.log.error(`Scope of key '${key}' not found.`);
-            this.fastify.close().then(() => this.fastify.log.info('Closing server because of error in scope.'));
-            throw new Error(`Scope of key '${key}' not found.`);
-        }
-        return scope;
-    }
-
-}
-
-export const fastifyPluginScope = (scope: Scope) =>
-    function(fastify: FastifyInstance) {
-        let scopes: Scopes | undefined = new Scopes(fastify);
-        scopes.addScope('main', scope);
-        fastify.decorate('scopes', scopes);
-        fastify.addHook('onClose', (instance, done) => {
-            scopes = undefined;
-            instance.log.info('Scopes released.');
-            done();
-        });
-    };
 
 // Start Fastify server
 export function startServer(port: number, fastify: FastifyInstance, devServer: boolean): Operation<undefined> {
