@@ -17,9 +17,9 @@ export function* buildFastify(pgPool: typeof Pool, kysely: typeof Kysely, logger
 
 
     // instantiate server
-    const fastify = yield* call(() => Fastify({
+    const fastify = Fastify({
         logger: logger ?? (process.env.LOGGER ? process.env.LOGGER === 'true' : true),
-    }));
+    });
 
     // create pool
     yield* createPool(
@@ -39,9 +39,9 @@ export function* buildFastify(pgPool: typeof Pool, kysely: typeof Kysely, logger
     fastify.addSchema(schemas);
 
     // register routes
-    yield* call(() => fastify.register(routesBenchmark));
-    yield* call(() => fastify.register(routesScope));
-    yield* call(() => fastify.register(mainRoutes));
+    fastify.register(routesBenchmark);
+    fastify.register(routesScope);
+    fastify.register(mainRoutes);
 
     const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
